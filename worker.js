@@ -130,27 +130,51 @@ async function onMessage (message) {
   return handleGuestMessage(message)
 }
 
-async function handleGuestMessage(message){
-  let chatId = message.chat.id;
-  let isblocked = await nfd.get('isblocked-' + chatId, { type: "json" })
-  
-  if(isblocked){
+/**
+ * 处理普通用户（guest）消息
+ * 新增：禁止接收任何已转发的消息
+ */
+async function handleGuestMessage(message) {
+  const chatId = message.chat.id;
+
+  // ===== 禁止转发检测 =====
+  if (
+    message.forward_from ||
+    message.forward_from_chat ||
+    message.forward_sender_name ||
+    message.forward_signature ||
+    message.forward_date
+  ) {
     return sendMessage({
       chat_id: chatId,
-      text:'Your are blocked'
-    })
+      text: '本机器人禁止接收已转发的消息，请直接发送您自己的内容。',
+      parse_mode: 'Markdown'
+    });
+  }
+  // =========================
+
+  // 检查是否被屏蔽
+  let isblocked = await nfd.get('isblocked-' + chatId, { type: "json" });
+  if (isblocked) {
+    return sendMessage({
+      chat_id: chatId,
+      text: 'You are blocked'
+    });
   }
 
+  // 正常转发给管理员
   let forwardReq = await forwardMessage({
-    chat_id:ADMIN_UID,
-    from_chat_id:message.chat.id,
-    message_id:message.message_id
-  })
-  console.log(JSON.stringify(forwardReq))
-  if(forwardReq.ok){
-    await nfd.put('msg-map-' + forwardReq.result.message_id, chatId)
+    chat_id: ADMIN_UID,
+    from_chat_id: message.chat.id,
+    message_id: message.message_id
+  });
+
+  if (forwardReq.ok) {
+    await nfd.put('msg-map-' + forwardReq.result.message_id, chatId);
   }
-  return handleNotify(message)
+
+  // 发送防骗提醒（按原逻辑）
+  return handleNotify(message);
 }
 
 async function handleNotify(message){
