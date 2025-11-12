@@ -1,27 +1,14 @@
-name: Deploy Worker
+name = "nfd-bot"
+main = "worker.js"
+compatibility_date = "2025-11-12"
 
-on:
-  push:
-    branches: [ main ]
+# 环境变量（通过 GitHub Secrets 注入）
+[vars]
+ENV_BOT_TOKEN = ""
+ENV_BOT_SECRET = ""
+ENV_ADMIN_UID = ""
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          secrets: |
-            ENV_BOT_TOKEN
-            ENV_BOT_SECRET
-            ENV_ADMIN_UID
-          envVars: |
-            ENV_BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-            ENV_BOT_SECRET=${{ secrets.BOT_SECRET }}
-            ENV_ADMIN_UID=${{ secrets.ADMIN_UID }}
-          kvNamespaces: |
-            nfd=${{ secrets.KV_NAMESPACE_ID }}
+# KV 命名空间绑定
+[[kv_namespaces]]
+binding = "nfd"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
