@@ -11,4 +11,4 @@ ENV_ADMIN_UID = ""
 # KV 命名空间（必须先在 Cloudflare 创建）
 [[kv_namespaces]]
 binding = "NFD_KV"
-id = "YOUR_KV_ID_HERE"
+id = "6abe78e21a124170ac75236b27b4d76f"
