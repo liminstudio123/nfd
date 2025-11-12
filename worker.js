@@ -2,7 +2,6 @@ const TOKEN = ENV_BOT_TOKEN
 const WEBHOOK = '/endpoint'
 const SECRET = ENV_BOT_SECRET
 const ADMIN_UID = ENV_ADMIN_UID
-
 const NOTIFY_INTERVAL = 3600 * 1000;
 const fraudDb = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/fraud.db';
 const notificationUrl = 'https://raw.githubusercontent.com/LloydAsp/nfd/main/data/notification.txt'
@@ -28,10 +27,15 @@ function forwardMessage(msg) { return requestTelegram('forwardMessage', makeReqB
 // ========== Worker 主入口 ==========
 addEventListener('fetch', event => {
   const url = new URL(event.request.url)
-  if (url.pathname === WEBHOOK) event.respondWith(handleWebhook(event))
-  else if (url.pathname === '/registerWebhook') event.respondWith(registerWebhook(event, url, WEBHOOK, SECRET))
-  else if (url.pathname === '/unRegisterWebhook') event.respondWith(unRegisterWebhook(event))
-  else event.respondWith(new Response('No handler for this request'))
+  if (url.pathname === WEBHOOK) {
+    event.respondWith(handleWebhook(event))
+  } else if (url.pathname === '/registerWebhook') {
+    event.respondWith(registerWebhook(event))  // ← 修复：只传 event
+  } else if (url.pathname === '/unRegisterWebhook') {
+    event.respondWith(unRegisterWebhook(event))
+  } else {
+    event.respondWith(new Response('No handler for this request'))
+  }
 })
 
 // ========== Webhook ==========
@@ -52,24 +56,20 @@ async function onUpdate(update) {
 // ========== 消息核心处理（三道铁锁）==========
 async function onMessage(message) {
   const chatId = message.chat.id;
-  const chatType = message.chat.type;          // private / channel / group / supergroup
+  const chatType = message.chat.type;
   const from = message.from;
 
-  // === 第1道锁：禁止所有频道消息 ===
+  // === 第1道锁：禁止频道 ===
   if (chatType === 'channel') {
-    // 可选：给管理员发一条提醒
-    // await sendMessage({chat_id: ADMIN_UID, text: `频道 ${message.chat.title} 试图发消息，已自动屏蔽`});
-    return;   // 直接无视
+    return;
   }
 
-  // === 第2道锁：禁止任何机器人发消息 ===
+  // === 第2道锁：禁止其他 Bot ===
   if (from && from.is_bot) {
-    // 可选提醒管理员
-    // await sendMessage({chat_id: ADMIN_UID, text: `机器人 @${from.username} 试图联系，已屏蔽`});
-    return;   // 直接无视
+    return;
   }
 
-  // === 第3道锁：禁止任何人转发消息 ===
+  // === 第3道锁：禁止转发 ===
   if (
     message.forward_from ||
     message.forward_from_chat ||
@@ -84,13 +84,13 @@ async function onMessage(message) {
     });
   }
 
-  // === /start 命令 ===
+  // === /start ===
   if (message.text === '/start') {
     let startMsg = await fetch(startMsgUrl).then(r => r.text());
     return sendMessage({ chat_id: chatId, text: startMsg });
   }
 
-  // === 管理员专属功能 ===
+  // === 管理员功能 ===
   if (message.chat.id.toString() === ADMIN_UID) {
     if (!message?.reply_to_message?.chat) {
       return sendMessage({
@@ -112,21 +112,18 @@ async function onMessage(message) {
     }
   }
 
-  // === 普通用户正常流程 ===
+  // === 普通用户 ===
   return handleGuestMessage(message);
 }
 
 // ========== 普通用户处理 ==========
 async function handleGuestMessage(message) {
   const chatId = message.chat.id;
-
-  // 被屏蔽？
   let isblocked = await nfd.get('isblocked-' + chatId, { type: "json" });
   if (isblocked) {
     return sendMessage({ chat_id: chatId, text: 'You are blocked' });
   }
 
-  // 转发给管理员
   let forwardReq = await forwardMessage({
     chat_id: ADMIN_UID,
     from_chat_id: message.chat.id,
@@ -176,15 +173,39 @@ async function checkBlock(message) {
   return sendMessage({ chat_id: ADMIN_UID, text: `UID:${guest} ${blocked ? '已被屏蔽' : '未屏蔽'}` });
 }
 
-// ========== Webhook 注册 ==========
-async function registerWebhook(event, reqUrl, suffix, secret) {
-  const url = `${reqUrl.protocol}//${reqUrl.hostname}${suffix}`;
-  const r = await (await fetch(apiUrl('setWebhook', { url, secret_token: secret }))).json();
-  return new Response(r.ok ? 'Ok' : JSON.stringify(r, null, 2));
+// ========== Webhook 注册（支持直接访问）==========
+async function registerWebhook(event) {
+  try {
+    const currentUrl = new URL(event.request.url);
+    const webhookUrl = `${currentUrl.protocol}//${currentUrl.hostname}${WEBHOOK}`;
+
+    const params = { url: webhookUrl, secret_token: SECRET };
+    const response = await fetch(apiUrl('setWebhook', params));
+    const result = await response.json();
+
+    if (result.ok) {
+      return new Response(
+        `Webhook 注册成功！\n\nURL: ${webhookUrl}\nSecret: ${SECRET}\n\nBot 已上线！`,
+        { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+      );
+    } else {
+      return new Response(
+        `注册失败：\n${JSON.stringify(result, null, 2)}`,
+        { status: 500, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+      );
+    }
+  } catch (error) {
+    return new Response(
+      `服务器错误：${error.message}\n\n请检查 TOKEN 和 SECRET 是否正确注入。`,
+      { status: 500 }
+    );
+  }
 }
-async function unRegisterWebhook() {
+
+// ========== 取消 Webhook ==========
+async function unRegisterWebhook(event) {
   const r = await (await fetch(apiUrl('setWebhook', { url: '' }))).json();
-  return new Response(r.ok ? 'Ok' : JSON.stringify(r, null, 2));
+  return new Response(r.ok ? 'Webhook 已取消' : JSON.stringify(r, null, 2));
 }
 
 // ========== 骗子库 ==========
