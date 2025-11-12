@@ -95,21 +95,67 @@ async function onUpdate (update) {
  * Handle incoming Message
  * https://core.telegram.org/bots/api#message
  */
+/**
+ * Handle incoming Message
+ * 新增：全局禁止任何人转发消息（包括管理员）
+ * https://core.telegram.org/bots/api#message
+ */
 async function onMessage (message) {
-  if(message.text === '/start'){
-    let startMsg = await fetch(startMsgUrl).then(r => r.text())
+  const chatId = message.chat.id;
+
+  // ===== 禁止任何人转发（全局检测） =====
+  if (
+    message.forward_from ||
+    message.forward_from_chat ||
+    message.forward_sender_name ||
+    message.forward_signature ||
+    message.forward_date
+  ) {
     return sendMessage({
-      chat_id:message.chat.id,
-      text:startMsg,
-    })
+      chat_id: chatId,
+      text: '本机器人禁止接收任何已转发的消息。请直接发送原创内容，否则无法处理。',
+      parse_mode: 'Markdown'  // 可选：让提示更醒目
+    });
   }
-  if(message.chat.id.toString() === ADMIN_UID){
-    if(!message?.reply_to_message?.chat){
+  // ======================================
+
+  // 原有逻辑：/start 命令
+  if (message.text === '/start') {
+    let startMsg = await fetch(startMsgUrl).then(r => r.text());
+    return sendMessage({
+      chat_id: message.chat.id,
+      text: startMsg,
+    });
+  }
+
+  // 管理员逻辑（现在已安全：管理员转发也会被上面检测阻挡）
+  if (message.chat.id.toString() === ADMIN_UID) {
+    if (!message?.reply_to_message?.chat) {
       return sendMessage({
-        chat_id:ADMIN_UID,
-        text:'使用方法，回复转发的消息，并发送回复消息，或者`/block`、`/unblock`、`/checkblock`等指令'
-      })
+        chat_id: ADMIN_UID,
+        text: '使用方法，回复转发的消息，并发送回复消息，或者`/block`、`/unblock`、`/checkblock`等指令'
+      });
     }
+    if (/^\/block$/.exec(message.text)) {
+      return handleBlock(message);
+    }
+    if (/^\/unblock$/.exec(message.text)) {
+      return handleUnBlock(message);
+    }
+    if (/^\/checkblock$/.exec(message.text)) {
+      return checkBlock(message);
+    }
+    let guestChantId = await nfd.get('msg-map-' + message?.reply_to_message.message_id, { type: "json" });
+    return copyMessage({
+      chat_id: guestChantId,
+      from_chat_id: message.chat.id,
+      message_id: message.message_id,
+    });
+  }
+
+  // 普通用户逻辑
+  return handleGuestMessage(message);
+}
     if(/^\/block$/.exec(message.text)){
       return handleBlock(message)
     }
