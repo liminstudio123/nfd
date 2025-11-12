@@ -8,7 +8,7 @@ ENV_BOT_TOKEN = ""
 ENV_BOT_SECRET = ""
 ENV_ADMIN_UID = ""
 
-# KV 命名空间绑定
+# KV 命名空间（必须先在 Cloudflare 创建）
 [[kv_namespaces]]
-binding = "nfd"
-id = "YOUR_KV_NAMESPACE_ID_HERE"
+binding = "NFD_KV"
+id = "YOUR_KV_ID_HERE"
