@@ -94,12 +94,10 @@ async function onUpdate (update) {
 /**
  * Handle incoming Message
  * https://core.telegram.org/bots/api#message
- *
- * 🌟 已修改：添加了消息过滤逻辑
  */
 async function onMessage (message) {
   // ===============================================
-  // 🌟 新增：消息过滤逻辑 START
+  // 🌟 消息过滤逻辑 (禁止转发、频道、链接) START
   // ===============================================
 
   // 1. 禁止转发信息 (检查是否有 forward_from 或 forward_date)
@@ -109,7 +107,6 @@ async function onMessage (message) {
   }
   
   // 2. 禁止接受频道信息 (检查 sender_chat 字段)
-  // sender_chat 字段通常表示消息来自频道或群组，但这里主要用于过滤频道。
   if (message && message.sender_chat && message.chat.type === 'channel') {
       console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，是频道消息。`);
       return;
@@ -127,16 +124,15 @@ async function onMessage (message) {
       }
   }
   // ===============================================
-  // 🌟 新增：消息过滤逻辑 END
+  // 🌟 消息过滤逻辑 END
   // ===============================================
 
+  // 🌟 已修改：关闭 /start 自动回复逻辑
   if(message.text === '/start'){
-    let startMsg = await fetch(startMsgUrl).then(r => r.text())
-    return sendMessage({
-      chat_id:message.chat.id,
-      text:startMsg,
-    })
+    console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，已关闭 /start 自动回复。`);
+    return; 
   }
+
   if(message.chat.id.toString() === ADMIN_UID){
     if(!message?.reply_to_message?.chat){
       return sendMessage({
