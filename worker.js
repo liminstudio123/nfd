@@ -96,38 +96,52 @@ async function onUpdate (update) {
  * https://core.telegram.org/bots/api#message
  */
 async function onMessage (message) {
+  
   // ===============================================
-  // 🌟 消息过滤逻辑 (禁止转发、频道、链接) START
+  // 🌟 增强型消息过滤逻辑 START
   // ===============================================
-
-  // 1. 禁止转发信息 (检查是否有 forward_from 或 forward_date)
-  if (message && (message.forward_from || message.forward_date)) {
-      console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，是转发消息。`);
-      return; // 直接返回，不处理
+  if (!message) {
+      return;
   }
   
-  // 2. 禁止接受频道信息 (检查 sender_chat 字段)
-  if (message && message.sender_chat && message.chat.type === 'channel') {
+  // 1. 禁止转发信息
+  if (message.forward_from || message.forward_date) {
+      console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，是转发消息。`);
+      return; 
+  }
+  
+  // 2. 禁止接受频道消息
+  if (message.sender_chat && message.chat.type === 'channel') {
       console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，是频道消息。`);
       return;
   }
 
-  // 3. 禁止链接 (检查 message.entities 是否包含 'url' 或 'text_link')
-  if (message && message.entities) {
-      const hasLink = message.entities.some(entity => 
-          entity.type === 'url' || entity.type === 'text_link'
+  // 3. 禁止图片、文件、视频、音频、贴纸等各种媒体类型
+  if (message.photo || message.document || message.video || message.audio || message.sticker || message.animation || message.voice || message.video_note) {
+      console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，包含媒体文件/图片/视频。`);
+      return;
+  }
+
+  // 4. 禁止链接和 @用户名 (通过检查 entities)
+  if (message.entities || message.caption_entities) {
+      const entities = message.entities || message.caption_entities;
+      const hasRestrictedContent = entities.some(entity => 
+          entity.type === 'url' ||       // 超链接
+          entity.type === 'text_link' ||  // 文本超链接
+          entity.type === 'mention' ||    // @用户名
+          entity.type === 'email'         // 电子邮件地址 (额外的安全过滤)
       );
       
-      if (hasLink) {
-          console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，包含链接。`);
+      if (hasRestrictedContent) {
+          console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，包含链接或@提及。`);
           return;
       }
   }
   // ===============================================
-  // 🌟 消息过滤逻辑 END
+  // 🌟 增强型消息过滤逻辑 END
   // ===============================================
 
-  // 🌟 已修改：关闭 /start 自动回复逻辑
+  // 🌟 已关闭 /start 自动回复逻辑，如果用户发送 /start，直接返回
   if(message.text === '/start'){
     console.log(`[Filter] 阻止: 消息来自 ${message.chat.id}，已关闭 /start 自动回复。`);
     return; 
@@ -180,10 +194,13 @@ async function handleGuestMessage(message){
   if(forwardReq.ok){
     await nfd.put('msg-map-' + forwardReq.result.message_id, chatId)
   }
-  return handleNotify(message)
+  // 🌟 关键修改：取消了 handleNotify(message) 的调用，禁用了自动回复
+  return new Response('Message forwarded'); 
 }
 
 async function handleNotify(message){
+  // 注意：这个函数虽然存在，但已不再被调用，其逻辑已失效。
+  
   // 先判断是否是诈骗人员，如果是，则直接提醒
   // 如果不是，则根据时间间隔提醒：用户id，交易注意点等
   let chatId = message.chat.id;
